@@ -28,7 +28,7 @@ public:
     void addNode(double state, int count);    
     void clear();
     
-    void update(double** statePt, int length);
+    void update(double** statePt, int length, bool bounded);
     
     int getNumNodes() const;
     double getState(int nodeId) const;
