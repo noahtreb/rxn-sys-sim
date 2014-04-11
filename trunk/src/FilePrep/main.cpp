@@ -5,10 +5,10 @@ using namespace std;
 
 int main(int argc, const char* argv[]) {
     string fileName;
-    int maxDataSavePts;
+    int maxDataSavePts, boundHandlingMethod;
     double stoppingTol;
     
-    if (argc == 6) {
+    if (argc == 8) {
         for (int i = 0; i < argc; i++) {            
             if (argv[i][0] == '-') {
                 switch(argv[i][1]) {
@@ -20,16 +20,21 @@ int main(int argc, const char* argv[]) {
                         stoppingTol = atof(argv[i+1]);
                         i++;
                         break;
+                    case 'b':
+                        boundHandlingMethod = atof(argv[i+1]);
+                        i++;
+                        break;
                 }
             } else {                
                 fileName = argv[i];
             }
         }
     } else {
-        fprintf(stderr, "\nUsage: ./FilePrep <fileName> -n <maxDataSavePts> -e <stoppingTol>\n");
-        fprintf(stderr, "             <fileName> Name of the NetCDF file to be prepared for simulation.\n");
-        fprintf(stderr, "    -n <maxDataSavePts> Maximum number of initial states to be held in the file.\n");
-        fprintf(stderr, "    -e    <stoppingTol> Maximum allowable L2 distance between successive probability distributions.\n\n");
+        fprintf(stderr, "\nUsage: ./FilePrep <fileName> -n <maxDataSavePts> -e <stoppingTol> -b <boundHandlingMethod>\n");
+        fprintf(stderr, "                  <fileName> Name of the NetCDF file to be prepared for simulation.\n");
+        fprintf(stderr, "    -n      <maxDataSavePts> Maximum number of initial states to be held in the file.\n");
+        fprintf(stderr, "    -e         <stoppingTol> Maximum allowable L2 distance between successive probability distributions.\n\n");
+        fprintf(stderr, "    -b <boundHandlingMethod> 1 for deletion. 2 for resampling.");
         abort();
     }
         
@@ -42,7 +47,8 @@ int main(int argc, const char* argv[]) {
     NcDim* dim = file.add_dim("maxDataSavePts", maxDataSavePts);
     
     NcVar* stoppingTolVar = file.add_var("stoppingTol", ncDouble);
-    NcVar* numDataSavePtsVar = file.add_var("numDataSavePts", ncInt, file.get_dim("numMdls"));    
+    NcVar* numDataSavePtsVar = file.add_var("numDataSavePts", ncInt, file.get_dim("numMdls")); 
+    NcVar* boundHandlingMethodVar = file.add_var("boundHandlingMethod", ncInt, file.get_dim("numMdls"));
     file.add_var("numBoundedSpeciesStates", ncInt, file.get_dim("numMdls"));
     file.add_var("speciesStateBounded", ncInt, file.get_dim("numMdls"), file.get_dim("maxSpecies"));
     file.add_var("speciesStateLowerBounds", ncDouble, file.get_dim("numMdls"), file.get_dim("maxSpecies"));
@@ -63,4 +69,6 @@ int main(int argc, const char* argv[]) {
         numDataSavePtsVar->set_cur(i);
         numDataSavePtsVar->put(&maxDataSavePts, 1);
     }
+    
+    boundHandlingMethodVar->put(&boundHandlingMethod, 1);
 }

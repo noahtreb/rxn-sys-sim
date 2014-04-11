@@ -62,7 +62,7 @@ void Distribution::clear() {
     this->numNodes = 0;
 }
 
-void Distribution::update(double** statePt, int length) {
+void Distribution::update(double** statePt, int length, bool bounded) {
     this->numNodes = 0;
     
     std::vector<double> states;
@@ -72,10 +72,22 @@ void Distribution::update(double** statePt, int length) {
     
     std::sort(states.begin(), states.end());
     
+    int startIndex = 0;
+    if (bounded) {
+        for (int i = 0; i < length; i++) {
+            if (states[i] > this->species->stateLowerBound) {
+                startIndex = i;
+                break;
+            }
+        }
+    }
+    
     int count = 0;
-    double lastState = states[0];
-    for (int i = 0; i < length; i++) {
-        if (states[i] == lastState) {
+    double lastState = states[startIndex];
+    for (int i = startIndex; i < length; i++) {
+        if (bounded && states[i] >= this->species->stateUpperBound) {
+            break;
+        } else if (states[i] == lastState) {
             count++;
         } else {
             this->addNode(lastState, count);

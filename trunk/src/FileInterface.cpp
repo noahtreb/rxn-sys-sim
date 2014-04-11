@@ -16,7 +16,7 @@ FileInterface::~FileInterface() {
     
 }
 
-System* FileInterface::readFileData(int& numTrials, double& startTime, double& endTime, int& numTimePts, double& timeStep, double& stoppingTol, int& numDataSavePts, int*& dataSavePts, int& numBoundedSpeciesStates) const {
+System* FileInterface::readFileData(int& numTrials, double& startTime, double& endTime, int& numTimePts, double& timeStep, double& stoppingTol, int& numDataSavePts, int*& dataSavePts, int& boundHandlingMethod, int& numBoundedSpeciesStates) const {
     NcFile file(this->fileName.c_str(), NcFile::ReadOnly);    
     if (!file.is_valid()) {
         fprintf(stderr, "Error: %s could not be opened.\n", this->fileName.c_str());
@@ -65,6 +65,7 @@ System* FileInterface::readFileData(int& numTrials, double& startTime, double& e
         }
     }
     
+    file.get_var("boundHandlingMethod")->get(&boundHandlingMethod, 1);
     file.get_var("numBoundedSpeciesStates")->get(&numBoundedSpeciesStates, 1);
     
     int* speciesStateBoundedTemp = new int[numSpecies];
@@ -249,6 +250,16 @@ void FileInterface::overwriteStoppingTol(double stoppingTol) const {
     file.get_var("stoppingTol")->put(&stoppingTol, 1);
 }
 
+void FileInterface::overwriteBoundHandlingMethod(int boundHandlingMethod) const {
+    NcFile file(this->fileName.c_str(), NcFile::Write);
+    if (!file.is_valid()) {
+        fprintf(stderr, "Error: %s could not be opened.\n", this->fileName.c_str());
+        abort();
+    }
+    
+    file.get_var("boundHandlingMethod")->put(&boundHandlingMethod, 1);
+}
+
 void FileInterface::writeTimeData(double* time, int numTimePts) const {
     NcFile file(this->fileName.c_str(), NcFile::Write);
     if (!file.is_valid()) {
@@ -259,7 +270,7 @@ void FileInterface::writeTimeData(double* time, int numTimePts) const {
     file.get_var("time")->put(time, 1, numTimePts);
 }
 
-void FileInterface::writeInitStateData(string varName, int trial, double** data, int numSpecies, int numTimePts) const {
+void FileInterface::writeInitStateData(string varName, int trial, double** data, int numSpecies, int startTimePt, int numTimePts) const {
     NcFile file(this->fileName.c_str(), NcFile::Write);
     if (!file.is_valid()) {
         fprintf(stderr, "Error: %s could not be opened.\n", this->fileName.c_str());
@@ -268,13 +279,13 @@ void FileInterface::writeInitStateData(string varName, int trial, double** data,
     
     long dataCounts[] = {1, 1, numTimePts, 1};    
     for (int i = 0; i < numSpecies; i++) {
-        long currPos[] = {0, trial, 0, i};
+        long currPos[] = {0, trial, startTimePt, i};
         file.get_var(varName.c_str())->set_cur(currPos);
         file.get_var(varName.c_str())->put(data[i], dataCounts);
     }
 }
 
-void FileInterface::writeStateData(string varName, int dataSavePtId, int trial, double** data, int numSpecies, int numTimePts) const {
+void FileInterface::writeStateData(string varName, int dataSavePtId, int trial, double** data, int numSpecies, int startTimePt, int numTimePts) const {
     NcFile file(this->fileName.c_str(), NcFile::Write);
     if (!file.is_valid()) {
         fprintf(stderr, "Error: %s could not be opened.\n", this->fileName.c_str());
@@ -283,7 +294,7 @@ void FileInterface::writeStateData(string varName, int dataSavePtId, int trial, 
     
     long dataCounts[] = {1, 1, 1, numTimePts, 1};    
     for (int i = 0; i < numSpecies; i++) {
-        long currPos[] = {0, dataSavePtId, trial, 0, i};
+        long currPos[] = {0, dataSavePtId, trial, startTimePt, i};
         file.get_var(varName.c_str())->set_cur(currPos);
         file.get_var(varName.c_str())->put(data[i], dataCounts);
     }
