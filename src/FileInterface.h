@@ -23,7 +23,8 @@ public:
     void writeTimeData(double* time, int numTimePts) const;
     void writeInitStateData(std::string varName, int trial, double** data, int numSpecies, int startTimePt, int numTimePts) const;    
     void writeStateData(std::string varName, int dataSavePtId, int trial, double** data, int numSpecies, int startTimePt, int numTimePts) const;
-    void writeAbsorbingCurrentData(int dataSavePtId, int absorbingCurrent) const;
+    void writeInitAbsCurrData(std::string varName, int** absCurr, int numSpecies, int startTimePt, int numTimePts) const;
+    void writeAbsCurrData(std::string varName, int dataSavePtId, int** absCurr, int numSpecies, int startTimePt, int numTimePts) const;
 private:
 };
 

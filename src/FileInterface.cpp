@@ -281,7 +281,7 @@ void FileInterface::writeInitStateData(string varName, int trial, double** data,
     for (int i = 0; i < numSpecies; i++) {
         long currPos[] = {0, trial, startTimePt, i};
         file.get_var(varName.c_str())->set_cur(currPos);
-        file.get_var(varName.c_str())->put(data[i], dataCounts);
+        file.get_var(varName.c_str())->put(&data[i][startTimePt], dataCounts);
     }
 }
 
@@ -296,17 +296,36 @@ void FileInterface::writeStateData(string varName, int dataSavePtId, int trial, 
     for (int i = 0; i < numSpecies; i++) {
         long currPos[] = {0, dataSavePtId, trial, startTimePt, i};
         file.get_var(varName.c_str())->set_cur(currPos);
-        file.get_var(varName.c_str())->put(data[i], dataCounts);
+        file.get_var(varName.c_str())->put(&data[i][startTimePt], dataCounts);
     }
 }
 
-void FileInterface::writeAbsorbingCurrentData(int dataSavePtId, int absorbingCurrent) const {
+void FileInterface::writeInitAbsCurrData(string varName, int** absCurr, int numSpecies, int startTimePt, int numTimePts) const {
     NcFile file(this->fileName.c_str(), NcFile::Write);
     if (!file.is_valid()) {
         fprintf(stderr, "Error: %s could not be opened.\n", this->fileName.c_str());
         abort();
     }
     
-    file.get_var("absorbingCurrent")->set_cur(dataSavePtId);
-    file.get_var("absorbingCurrent")->put(&absorbingCurrent, 1);
+    long dataCounts[] = {1, numTimePts, 1};
+    for (int i = 0; i < numSpecies; i++) {
+        long currPos[] = {0, startTimePt, i};
+        file.get_var(varName.c_str())->set_cur(currPos);
+        file.get_var(varName.c_str())->put(&absCurr[i][startTimePt], dataCounts);
+    }
+}
+
+void FileInterface::writeAbsCurrData(string varName, int dataSavePtId, int** absCurr, int numSpecies, int startTimePt, int numTimePts) const {
+    NcFile file(this->fileName.c_str(), NcFile::Write);
+    if (!file.is_valid()) {
+        fprintf(stderr, "Error: %s could not be opened.\n", this->fileName.c_str());
+        abort();
+    }
+    
+    long dataCounts[] = {1, 1, numTimePts, 1};
+    for (int i = 0; i < numSpecies; i++) {
+        long currPos[] = {0, dataSavePtId, startTimePt, i};
+        file.get_var(varName.c_str())->set_cur(currPos);
+        file.get_var(varName.c_str())->put(&absCurr[i][startTimePt], dataCounts);
+    }
 }
