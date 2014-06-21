@@ -102,6 +102,13 @@ void System::initRev() {
     }    
 }
 
+void System::updateProps() {
+    for (int i = 0; i < this->numRxns; i++) {
+        this->rxns[i]->updateProp(this->volRatio);
+        this->rxns[i]->oldProp = this->rxns[i]->prop;
+    }
+}
+
 void System::setRxnTimes(Reaction* execRxn, double execRxnTime, bool fwd) {     
     int dir;
     if (fwd) {
@@ -181,6 +188,7 @@ int System::execRxn(bool fwd) {
             this->setRxnTimes(rxn, time, fwd);
             this->updateTime(time);
         } else {
+            fprintf(stderr, "      Here\n");
             for (int i = 0; i < rxn->numStoichSpecies; i++) {
                 if (rxn->stoichSpecies[i]->stateChanges) {
                     rxn->stoichSpecies[i]->state -= dir * rxn->stoichCoeffs[i];
@@ -189,6 +197,8 @@ int System::execRxn(bool fwd) {
 
             this->rxnPq->updatePqByNodeId(0, dir * DBL_MAX);
         }
+    } else {
+        //fprintf(stderr, "        %i\n", boundBreachSpeciesId);
     }
     
     return boundBreachSpeciesId;

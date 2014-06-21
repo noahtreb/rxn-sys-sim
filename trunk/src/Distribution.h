@@ -28,11 +28,14 @@ public:
     void addNode(double state, int count);    
     void clear();
     
+    void setSpecies(Species* species);
     void update(double** statePt, int length, bool bounded);
+    void addTrial(double state, bool bounded);
     
     int getNumNodes() const;
     double getState(int nodeId) const;
     int getCount(int nodeId) const;
+    int getTotCount() const;
     
     double calcDistance(Distribution* other) const;
     double sample() const;

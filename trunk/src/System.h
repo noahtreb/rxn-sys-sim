@@ -30,6 +30,7 @@ public:
     void seed(int seed);
     void initFwd();
     void initRev();
+    void updateProps();
     
     void setRxnTimes(Reaction* execRxn, double execRxnTime, bool fwd);
     int execRxn(bool fwd);

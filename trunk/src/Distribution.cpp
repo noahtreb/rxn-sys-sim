@@ -62,6 +62,10 @@ void Distribution::clear() {
     this->numNodes = 0;
 }
 
+void Distribution::setSpecies(Species* species) {
+    this->species = species;
+}
+
 void Distribution::update(double** statePt, int length, bool bounded) {
     this->numNodes = 0;
     
@@ -100,6 +104,10 @@ void Distribution::update(double** statePt, int length, bool bounded) {
     this->addNode(lastState, count);
 }
 
+void Distribution::addTrial(double state, bool bounded) {
+    
+}
+
 int Distribution::getNumNodes() const {
     return this->numNodes;
 }
@@ -110,6 +118,10 @@ double Distribution::getState(int nodeId) const {
 
 int Distribution::getCount(int nodeId) const {
     return this->nodes[nodeId]->count;
+}
+
+int Distribution::getTotCount() const {
+    return this->nodes[this->numNodes - 1]->cumCount;
 }
 
 double Distribution::calcDistance(Distribution* other) const {
@@ -167,7 +179,7 @@ double Distribution::calcDistance(Distribution* other) const {
 }
 
 double Distribution::sample() const {
-    double count = 1.0 * (*this->rng)() / this->rng->max() * this->maxNodes;
+    double count = 1.0 * (*this->rng)() / this->rng->max() * (this->getTotCount() - 1);
     
     int i;
     for (i = 0; i < this->numNodes; i++) {

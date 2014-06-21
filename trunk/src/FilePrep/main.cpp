@@ -54,14 +54,18 @@ int main(int argc, const char* argv[]) {
     file.add_var("speciesStateLowerBounds", ncDouble, file.get_dim("numMdls"), file.get_dim("maxSpecies"));
     file.add_var("speciesStateUpperBounds", ncDouble, file.get_dim("numMdls"), file.get_dim("maxSpecies"));
     file.add_var("dataSavePts", ncInt, file.get_dim("numMdls"), dim);
-    file.add_var("absorbingCurrent", ncInt, file.get_dim("numMdls"), dim);
     file.add_var("speciesStateChanges", ncInt, file.get_dim("numMdls"), file.get_dim("maxSpecies"));
     
     file.get_var("state")->rename("initFwdData");    
     file.add_var("initRevData", ncDouble, file.get_dim("numMdls"), file.get_dim("maxTrials"), file.get_dim("maxTimePts"), file.get_dim("maxSaveSpecies"));
     file.add_var("fwdData", ncDouble, file.get_dim("numMdls"), dim, file.get_dim("maxTrials"), file.get_dim("maxTimePts"), file.get_dim("maxSaveSpecies"));
     file.add_var("revData", ncDouble, file.get_dim("numMdls"), dim, file.get_dim("maxTrials"), file.get_dim("maxTimePts"), file.get_dim("maxSaveSpecies"));
-        
+    
+    file.add_var("initFwdAbsCurr", ncInt, file.get_dim("numMdls"), file.get_dim("maxTimePts"), file.get_dim("maxSaveSpecies"));
+    file.add_var("initRevAbsCurr", ncInt, file.get_dim("numMdls"), file.get_dim("maxTimePts"), file.get_dim("maxSaveSpecies"));
+    file.add_var("fwdAbsCurr", ncInt, file.get_dim("numMdls"), dim, file.get_dim("maxTimePts"), file.get_dim("maxSaveSpecies"));
+    file.add_var("revAbsCurr", ncInt, file.get_dim("numMdls"), dim, file.get_dim("maxTimePts"), file.get_dim("maxSaveSpecies"));
+    
     stoppingTolVar->put(&stoppingTol, 1);
     
     int numMdls = (int) file.get_dim("numMdls")->size();    

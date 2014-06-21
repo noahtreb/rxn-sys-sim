@@ -9,7 +9,7 @@ incDir = /usr/include
 #incDir = /home/kaznessi/trebeshn/Software/netcdf-4.3.0/include
 
 # Set C++ flag.
-cppFlags = -I$(incDir) -std=c++11 -fopenmp $(dFlags)
+cppFlags = -I$(incDir) -std=c++11 -fopenmp -pthread $(dFlags)
 cppLibs = -L$(libDir) -lnetcdf -lnetcdf_c++
 oFlags = -Ofast
 dFlags = -g -Wall -Wextra
