@@ -126,7 +126,7 @@ void rerunTrialFwd(FileInterface* fi, System* sys, Distribution** revDists, Dist
             } 
             
             if (endTimePt == numTimePts) {
-                int rtId = rt->id;
+                int rtId = rt->id;                
                 for (int i = rtId + 1; i < rerunTrials[origStartTimePt].size(); i++) {
                     rerunTrials[origStartTimePt][i]->id--;
                 }
@@ -154,7 +154,7 @@ void rerunTrialFwd(FileInterface* fi, System* sys, Distribution** revDists, Dist
                 rt->threadAssigned = false;
                 rt->threadId = -1;
                 rt->numPrevTrials = 0;
-                rt->id = rerunTrials[origStartTimePt].size() - 1;
+                rt->id = rerunTrials[endTimePt].size() - 1;
                 
                 for (int i = 0; i < endTimePt; i++) {
                     for (int j = 0; j < rerunTrials[i].size(); j++) {
@@ -455,13 +455,23 @@ int main(int argc, const char* argv[]) {
     
     double fwdSetupStart[numDataSavePts + 1];
     double fwdSetupEnd[numDataSavePts + 1];
+    double fwdRerunStart[numDataSavePts + 1];
+    double fwdAbsCurrWriteStart[numDataSavePts + 1];
+    double fwdAbsCurrResetStart[numDataSavePts + 1];
+    double fwdAbsCurrResetEnd[numDataSavePts + 1];
     vector<double> fwdTrialStart[numDataSavePts + 1][numTrials];
     vector<double> fwdWriteStart[numDataSavePts + 1][numTrials];
+    vector<double> fwdWriteEnd[numDataSavePts + 1][numTrials];
     vector<double> fwdTrialEnd[numDataSavePts + 1][numTrials];
     double revSetupStart[numDataSavePts + 1];
     double revSetupEnd[numDataSavePts + 1];
+    double revRerunStart[numDataSavePts + 1];
+    double revAbsCurrWriteStart[numDataSavePts + 1];
+    double revAbsCurrResetStart[numDataSavePts + 1];
+    double revAbsCurrResetEnd[numDataSavePts + 1];
     vector<double> revTrialStart[numDataSavePts + 1][numTrials];
     vector<double> revWriteStart[numDataSavePts + 1][numTrials];
+    vector<double> revWriteEnd[numDataSavePts + 1][numTrials];
     vector<double> revTrialEnd[numDataSavePts + 1][numTrials];
     
     int j = 0;
@@ -503,7 +513,7 @@ int main(int argc, const char* argv[]) {
     }
         
     thread* threads = new thread[numThreads];
-       
+    
     double progStart = omp_get_wtime();
     if (!skipInitFwd) {        
         fwdSetupStart[0] = omp_get_wtime();
@@ -528,7 +538,7 @@ int main(int argc, const char* argv[]) {
             
             fwdWriteStart[0][i].push_back(omp_get_wtime());
             writeStateData(-1, sys, fi, varName, i, state[threadId], 0, numTimePts, fileLock);
-            fwdTrialEnd[0][i].push_back(omp_get_wtime());
+            fwdWriteEnd[0][i].push_back(omp_get_wtime());
 
             if (boundBreach) {
                 omp_set_lock(&absCurrLock);
@@ -541,8 +551,10 @@ int main(int argc, const char* argv[]) {
                 numRerunTrials++;
                 omp_unset_lock(&boundLock);
             }
+            fwdTrialEnd[0][i].push_back(omp_get_wtime());
         }
               
+        fwdRerunStart[0] = omp_get_wtime();
         if (numRerunTrials > 0) {
             int cumCount = 0;
             for (int i = 0; i < numTimePts; i++) {
@@ -564,14 +576,17 @@ int main(int argc, const char* argv[]) {
             }
         }
         
+        fwdAbsCurrWriteStart[0] = omp_get_wtime();
         fi->writeInitAbsCurrData("initFwdAbsCurr", absCurr, masterSys->numSpecies, 0, numTimePts);
         
+        fwdAbsCurrResetStart[0] = omp_get_wtime();
         #pragma omp parallel for default(shared)
         for (int i = 0; i < masterSys->numSpecies; i++) {
             for (int j = 0; j < numTimePts; j++) {
                 absCurr[i][j] = 0;
             }
         }
+        fwdAbsCurrResetEnd[0] = omp_get_wtime();
     } else {
         fwdSetupStart[0] = 0;
         fwdSetupEnd[0] = 0;
@@ -582,7 +597,7 @@ int main(int argc, const char* argv[]) {
             fwdTrialEnd[0][i].push_back(0);
         }
     }
-        
+    
     if (!skipInitRev) {
         revSetupStart[0] = omp_get_wtime();
         
@@ -620,7 +635,7 @@ int main(int argc, const char* argv[]) {
             
             revWriteStart[0][i].push_back(omp_get_wtime());
             writeStateData(-1, sys, fi, varName, i, state[threadId], 0, numTimePts, fileLock);
-            revTrialEnd[0][i].push_back(omp_get_wtime());
+            revWriteEnd[0][i].push_back(omp_get_wtime());
             
             if (boundBreach) {
                 omp_set_lock(&absCurrLock);
@@ -633,8 +648,10 @@ int main(int argc, const char* argv[]) {
                 numRerunTrials++;
                 omp_unset_lock(&boundLock);
             }
+            revTrialEnd[0][i].push_back(omp_get_wtime());
         }
         
+        revRerunStart[0] = omp_get_wtime();
         if (numRerunTrials > 0) {
             int cumCount = 0;
             for (int i = numTimePts - 1; i >= 0; i--) {
@@ -656,14 +673,17 @@ int main(int argc, const char* argv[]) {
             }
         }
         
+        revAbsCurrWriteStart[0] = omp_get_wtime();
         fi->writeInitAbsCurrData("initRevAbsCurr", absCurr, masterSys->numSpecies, 0, numTimePts);
         
+        revAbsCurrResetStart[0] = omp_get_wtime();
         #pragma omp parallel for default(shared)
         for (int i = 0; i < masterSys->numSpecies; i++) {
             for (int j = 0; j < numTimePts; j++) {
                 absCurr[i][j] = 0;
             }
         }
+        revAbsCurrResetEnd[0] = omp_get_wtime();
     } else {
         revSetupStart[0] = 0;
         revSetupEnd[0] = 0;
@@ -673,10 +693,10 @@ int main(int argc, const char* argv[]) {
             revWriteStart[0][i].push_back(0);
             revTrialEnd[0][i].push_back(0);
         }
-    }  
-            
+    }
+    
     if (!skipRefine) {        
-        for (int i = 0; i < numDataSavePts; i++) {
+        for (int i = 0; i < numDataSavePts; i++) {            
             fwdSetupStart[i + 1] = omp_get_wtime();
             
             masterSys->rxnPq->minHeap = true;
@@ -695,7 +715,7 @@ int main(int argc, const char* argv[]) {
             
             int numRerunTrials = 0;
             #pragma omp parallel for default(shared) private(sys)
-            for (int j = 0; j < numTrials; j++) {                
+            for (int j = 0; j < numTrials; j++) {
                 fwdTrialStart[i + 1][j].push_back(omp_get_wtime());
                 
                 int threadId = omp_get_thread_num(); 
@@ -718,7 +738,7 @@ int main(int argc, const char* argv[]) {
                 
                 fwdWriteStart[i + 1][j].push_back(omp_get_wtime());
                 writeStateData(i, sys, fi, varName, j, state[threadId], 0, numTimePts, fileLock);
-                fwdTrialEnd[i + 1][j].push_back(omp_get_wtime());
+                fwdWriteEnd[i + 1][j].push_back(omp_get_wtime());
                 
                 if (boundBreach) {
                     omp_set_lock(&absCurrLock);
@@ -731,8 +751,10 @@ int main(int argc, const char* argv[]) {
                     numRerunTrials++;
                     omp_unset_lock(&boundLock);
                 }
+                fwdTrialEnd[i + 1][j].push_back(omp_get_wtime());
             }
             
+            fwdRerunStart[i + 1] = omp_get_wtime();
             if (numRerunTrials > 0) {
                 int cumCount = 0;
                 for (int j = 0; j < numTimePts; j++) {
@@ -753,15 +775,18 @@ int main(int argc, const char* argv[]) {
                     threads[j].join();
                 }
             }
-
+            
+            fwdAbsCurrWriteStart[i + 1] = omp_get_wtime();
             fi->writeAbsCurrData("fwdAbsCurr", i, absCurr, masterSys->numSpecies, 0, numTimePts);
 
+            fwdAbsCurrResetStart[i + 1] = omp_get_wtime();
             #pragma omp parallel for default(shared)
             for (int j = 0; j < masterSys->numSpecies; j++) {
                 for (int k = 0; k < numTimePts; k++) {
                     absCurr[j][k] = 0;
                 }
             }
+            fwdAbsCurrResetEnd[i + 1] = omp_get_wtime();
             
             revSetupStart[i + 1] = omp_get_wtime();
             
@@ -799,7 +824,7 @@ int main(int argc, const char* argv[]) {
                 
                 revWriteStart[i + 1][j].push_back(omp_get_wtime());
                 writeStateData(i, sys, fi, varName, j, state[threadId], 0, numTimePts, fileLock);
-                revTrialEnd[i + 1][j].push_back(omp_get_wtime());
+                revWriteEnd[i + 1][j].push_back(omp_get_wtime());
                 
                 if (boundBreach) {
                     omp_set_lock(&absCurrLock);
@@ -812,8 +837,10 @@ int main(int argc, const char* argv[]) {
                     numRerunTrials++;
                     omp_unset_lock(&boundLock);
                 }
+                revTrialEnd[i + 1][j].push_back(omp_get_wtime());
             }
             
+            revRerunStart[i + 1] = omp_get_wtime();
             if (numRerunTrials > 0) {
                 int cumCount = 0;
                 for (int j = numTimePts - 1; j >= 0; j--) {
@@ -835,87 +862,104 @@ int main(int argc, const char* argv[]) {
                 }
             }
 
+            revAbsCurrWriteStart[i + 1] = omp_get_wtime();
             fi->writeAbsCurrData("revAbsCurr", i, absCurr, masterSys->numSpecies, 0, numTimePts);
 
+            revAbsCurrResetStart[i + 1] = omp_get_wtime();
             #pragma omp parallel for default(shared)
             for (int j = 0; j < masterSys->numSpecies; j++) {
                 for (int k = 0; k < numTimePts; k++) {
                     absCurr[j][k] = 0;
                 }
             }
+            revAbsCurrResetEnd[i + 1] = omp_get_wtime();
         }
     }
     
     double progEnd = omp_get_wtime();
-        
+            
     numDataSavePts++;
     
     double avFwdSetupTime = 0;
     double avFwdTrialTime = 0;
     double avFwdRunTime = 0;
     double avFwdWriteTime = 0;
+    double avFwdRerunTime = 0;
     
     double avRevSetupTime = 0;
     double avRevTrialTime = 0;
     double avRevRunTime = 0;
     double avRevWriteTime = 0;
+    double avRevRerunTime = 0;
     
     for (int i = 0; i < numDataSavePts; i++) {
         avFwdSetupTime += fwdSetupEnd[i] - fwdSetupStart[i];
         avRevSetupTime += revSetupEnd[i] - revSetupStart[i];
+        avFwdRerunTime += fwdAbsCurrWriteStart[i] - fwdRerunStart[i];
+        avRevRerunTime += revAbsCurrWriteStart[i] - revRerunStart[i];
             
         for (int j = 0; j < numTrials; j++) {
             for (int k = 0; k < fwdTrialEnd[i][j].size(); k++) {
                 avFwdTrialTime += fwdTrialEnd[i][j][k] - fwdTrialStart[i][j][k];
                 avFwdRunTime += fwdWriteStart[i][j][k] - fwdTrialStart[i][j][k];
-                avFwdWriteTime += fwdTrialEnd[i][j][k] - fwdWriteStart[i][j][k];
+                avFwdWriteTime += fwdWriteEnd[i][j][k] - fwdWriteStart[i][j][k];
             }
             
             for (int k = 0; k < revTrialEnd[i][j].size(); k++) {
                 avRevTrialTime += revTrialEnd[i][j][k] - revTrialStart[i][j][k];
                 avRevRunTime += revWriteStart[i][j][k] - revTrialStart[i][j][k];
-                avRevWriteTime += revTrialEnd[i][j][k] - revWriteStart[i][j][k];
+                avRevWriteTime += revWriteEnd[i][j][k] - revWriteStart[i][j][k];
             }
         }
     }
     
     avFwdSetupTime /= numDataSavePts;
+    avFwdRerunTime /= numDataSavePts;
     avFwdTrialTime /= (numDataSavePts * numTrials);
     avFwdRunTime /= (numDataSavePts * numTrials);
     avFwdWriteTime /= (numDataSavePts * numTrials);
     
     avRevSetupTime /= numDataSavePts;
+    avRevRerunTime /= numDataSavePts;
     avRevTrialTime /= (numDataSavePts * numTrials);
     avRevRunTime /= (numDataSavePts * numTrials);
     avRevWriteTime /= (numDataSavePts * numTrials);
         
     double avSetupTime = (avFwdSetupTime + avRevSetupTime) / 2;
+    double avRerunTime = (avFwdRerunTime + avRevRerunTime) / 2;
     double avTrialTime = (avFwdTrialTime + avRevTrialTime) / 2;
     double avRunTime = (avFwdRunTime + avRevRunTime) / 2;
     double avWriteTime = (avFwdWriteTime + avRevWriteTime) / 2;
     
     fprintf(stdout, "\nForward simulations:\n");
-    fprintf(stdout, "    Average setup time:           %e s\n", avFwdSetupTime);
-    fprintf(stdout, "    Average simulation run time:  %e s\n", avFwdRunTime);
-    fprintf(stdout, "    Average file write time:      %e s\n", avFwdWriteTime);
-    fprintf(stdout, "    Average trial execution time: %e s\n\n", avFwdTrialTime);
+    fprintf(stdout, "    Average setup time:                %e s\n", avFwdSetupTime);
+    fprintf(stdout, "    Average trial simulation run time: %e s\n", avFwdRunTime);
+    fprintf(stdout, "    Average trial file write time:     %e s\n", avFwdWriteTime);
+    fprintf(stdout, "    Average trial execution time:      %e s\n", avFwdTrialTime);
+    fprintf(stdout, "    Average time to rerun trials:      %e s\n\n", avFwdRerunTime);
     
     fprintf(stdout, "Reverse simulations:\n");
-    fprintf(stdout, "    Average setup time:           %e s\n", avRevSetupTime);
-    fprintf(stdout, "    Average simulation run time:  %e s\n", avRevRunTime);
-    fprintf(stdout, "    Average file write time:      %e s\n", avRevWriteTime);
-    fprintf(stdout, "    Average trial execution time: %e s\n\n", avRevTrialTime);
+    fprintf(stdout, "    Average setup time:                %e s\n", avRevSetupTime);
+    fprintf(stdout, "    Average trial simulation run time: %e s\n", avRevRunTime);
+    fprintf(stdout, "    Average trial file write time:     %e s\n", avRevWriteTime);
+    fprintf(stdout, "    Average trial execution time:      %e s\n", avRevTrialTime);
+    fprintf(stdout, "    Average time to rerun trials:      %e s\n\n", avRevRerunTime);
     
     fprintf(stdout, "Forward and reverse simulations:\n");
-    fprintf(stdout, "    Average setup time:           %e s\n", avSetupTime);
-    fprintf(stdout, "    Average simulation run time:  %e s\n", avRunTime);
-    fprintf(stdout, "    Average file write time:      %e s\n", avWriteTime);
-    fprintf(stdout, "    Average trial execution time: %e s\n\n", avTrialTime);
+    fprintf(stdout, "    Average setup time:                %e s\n", avSetupTime);
+    fprintf(stdout, "    Average trial simulation run time: %e s\n", avRunTime);
+    fprintf(stdout, "    Average trial file write time:     %e s\n", avWriteTime);
+    fprintf(stdout, "    Average trial execution time:      %e s\n", avTrialTime);
+    fprintf(stdout, "    Average time to rerun trials:      %e s\n\n", avRerunTime);
     
     fprintf(stdout, "Total program execution time:          %e s\n\n", progEnd - progStart);
         
     delete[] dataSavePts;
     delete[] time;
+    delete[] rerunTrials;
+    delete[] distSpeciesKey;
+    delete[] speciesDistKey;
+    delete[] threads;
     
     for (int i = 0; i < numTrials; i++) {
         delete[] lastFwdStatePt[i];
@@ -925,6 +969,15 @@ int main(int argc, const char* argv[]) {
     delete[] lastRevStatePt;
     
     for (int i = 0; i < numThreads; i++) {
+        for (int j = 0; j < numTrials; j++) {
+            delete[] boundStatePts[i][j];
+        }
+        
+        delete[] boundStatePts[i];
+    }
+    delete[] boundStatePts;
+    
+    for (int i = 0; i < numThreads; i++) {
         for (int j = 0; j < masterSys->numSpecies; j++) {
             delete[] state[i][j];
         }        
@@ -932,8 +985,10 @@ int main(int argc, const char* argv[]) {
     }
     delete[] state;
     
-    delete[] distSpeciesKey;
-    delete[] speciesDistKey;
+    for (int i = 0; i < masterSys->numSpecies; i++) {
+        delete[] absCurr[i];
+    }
+    delete[] absCurr;    
     
     for (int i = 0; i < numBoundedSpeciesStates; i++) {
         delete revDists[i];
@@ -945,6 +1000,11 @@ int main(int argc, const char* argv[]) {
     delete[] revDistsPrev;
     delete[] fwdDists;
     delete[] fwdDistsPrev;
+    
+    for (int i = 0; i < numThreads; i++) {
+        delete threadDists[i];
+    }
+    delete[] threadDists;
     
     delete masterSys;    
     delete fi;
