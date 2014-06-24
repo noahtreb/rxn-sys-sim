@@ -37,7 +37,7 @@ RerunTrial::RerunTrial(int trialId, int startTimePt, int endTimePt, int boundBre
     this->threadId = -1;
 }
 
-void rerunTrial(FileInterface* fi, System* sys, Distribution** revDists, Distribution* dist, vector<RerunTrial*>* rerunTrials,
+void rerunTrialFwd(FileInterface* fi, System* sys, Distribution** revDists, Distribution* dist, vector<RerunTrial*>* rerunTrials,
         mt19937* rng, mutex* vecLock, mutex* fileLock, mutex* absCurrLock, string varName, double** boundStatePts, double** state,
         double* time, int** absCurr, int* speciesDistKey, int boundHandlingMethod, int threadId, int numTrials, int numTimePts) {
     while (true) {
@@ -73,7 +73,6 @@ void rerunTrial(FileInterface* fi, System* sys, Distribution** revDists, Distrib
         }
         
         while (rt->numPrevTrials > 0) {
-            //fprintf(stderr, "%i %i %i\n", threadId, rt->numPrevTrials, startTimePt);
             this_thread::sleep_for(chrono::seconds(1));
         }
         
@@ -92,9 +91,7 @@ void rerunTrial(FileInterface* fi, System* sys, Distribution** revDists, Distrib
         
         int origStartTimePt = startTimePt;
         
-        while (true) {
-            fprintf(stderr, "%i %f\n", threadId, sys->species[rt->boundBreachSpeciesId]->state);
-            
+        while (true) {            
             int endTimePt = numTimePts;
             
             for (int i = startTimePt + 1; i < numTimePts; i++) {
@@ -103,8 +100,6 @@ void rerunTrial(FileInterface* fi, System* sys, Distribution** revDists, Distrib
                     break;
                 }
             }
-            
-            //fprintf(stderr, "  %i %i %i\n", threadId, startTimePt, endTimePt);
             
             int boundBreachSpeciesId;
             bool boundBreached = simFwd(sys, startTimePt, endTimePt, time, state, revDists, speciesDistKey, boundHandlingMethod, boundBreachSpeciesId, endTimePt);
@@ -157,6 +152,121 @@ void rerunTrial(FileInterface* fi, System* sys, Distribution** revDists, Distrib
             }
                         
             startTimePt = endTimePt;
+            vecLock->unlock();
+        }
+    }
+    
+    delete sys;
+}
+
+void rerunTrialRev(FileInterface* fi, System* sys, Distribution** fwdDists, Distribution* dist, vector<RerunTrial*>* rerunTrials,
+        mt19937* rng, mutex* vecLock, mutex* fileLock, mutex* absCurrLock, string varName, double** boundStatePts, double** state,
+        double* time, int** absCurr, int* speciesDistKey, int boundHandlingMethod, int threadId, int numTrials, int numTimePts) {
+    while (true) {
+        vecLock->lock();
+        
+        int endTimePt;
+        int rtId;
+        RerunTrial* rt;
+        bool rtAssigned = false;
+        
+        for (int i = numTimePts - 1; i >= 0; i--) {
+            for (int j = 0; j < rerunTrials[i].size(); j++) {
+                if (!rerunTrials[i][j]->threadAssigned) {
+                    endTimePt = i;
+                    rtId = j;
+                    rt = rerunTrials[i][j];
+                    rt->threadAssigned = true;
+                    rt->threadId = threadId;
+                    rtAssigned = true;
+                    break;
+                }                
+            }
+            
+            if (rtAssigned) {
+                break;
+            }
+        }
+                
+        vecLock->unlock();
+        
+        if (!rtAssigned) {
+            return;
+        }
+        
+        while (rt->numPrevTrials > 0) {
+            this_thread::sleep_for(chrono::seconds(1));
+        }
+        
+        fileLock->lock();
+        fi->readInitDataPt(varName, numTrials, sys->numSpecies, endTimePt, boundStatePts);            
+        fileLock->unlock();
+        
+        dist->setSpecies(sys->species[rt->boundBreachSpeciesId]);
+        dist->update(boundStatePts, numTrials, true);
+              
+        sys->updateTime(time[endTimePt]);
+        sys->species[rt->boundBreachSpeciesId]->state = dist->sample();
+        sys->updateProps();
+        sys->seed((*rng)());
+        sys->initRev();
+        
+        int origEndTimePt = endTimePt;
+        
+        while (true) {            
+            int startTimePt = 0;
+            
+            for (int i = endTimePt - 1; i >= 0; i--) {
+                if (rerunTrials[i].size() > 0) {
+                    startTimePt = i;
+                    break;
+                }
+            }
+            
+            int boundBreachSpeciesId;
+            bool boundBreached = simRev(sys, startTimePt, endTimePt, time, state, fwdDists, speciesDistKey, boundHandlingMethod, boundBreachSpeciesId, startTimePt);
+            
+            writeStateData(-1, sys, fi, varName, rt->trialId, state, startTimePt, endTimePt - startTimePt, fileLock);
+                        
+            vecLock->lock();               
+            
+            for (int i = startTimePt; i < endTimePt; i++) {                
+                for (int j = 0; j < rerunTrials[i].size(); j++) {
+                    rerunTrials[i][j]->numPrevTrials--;
+                }
+            } 
+            
+            if (startTimePt == 0) {
+                delete rt;
+                rerunTrials[origEndTimePt].erase(rerunTrials[origEndTimePt].begin() + rtId);
+                vecLock->unlock();
+                
+                break;
+            }               
+            
+            if (boundBreached) {
+                absCurrLock->lock();
+                absCurr[boundBreachSpeciesId][startTimePt]++;
+                absCurrLock->unlock();
+                
+                rerunTrials[origEndTimePt].erase(rerunTrials[origEndTimePt].begin() + rtId);
+                rerunTrials[startTimePt].push_back(rt);
+
+                rt->threadAssigned = false;
+                rt->threadId = -1;
+                rt->numPrevTrials = 0;
+                
+                for (int i = startTimePt + 1; i < numTimePts; i++) {
+                    for (int j = 0; j < rerunTrials[i].size(); j++) {
+                        rt->numPrevTrials++;
+                    }
+                }
+                vecLock->unlock();
+                
+                break;
+            }
+                        
+            endTimePt = startTimePt;
             vecLock->unlock();
         }
     }
@@ -224,7 +334,7 @@ int main(int argc, const char* argv[]) {
         fprintf(stderr, "Optional arguments:\n");
         fprintf(stderr, "    -s <skipInitFwd> Use this flag to indicate that preexisting data from the 'initFwdData' variable\n");
         fprintf(stderr, "                     should be used in the forward refinement algorithm.\n");
-        fprintf(stderr, "       <skipInitRev> Use this flag to indicate that preexisting data from the 'initRevData' variable\n");
+        fprintf(stderr, "    -t <skipInitRev> Use this flag to indicate that preexisting data from the 'initRevData' variable\n");
         fprintf(stderr, "                     should be used in the reverse refinement algorithm.\n");
         fprintf(stderr, "    -u  <skipRefine> Use this flag to bypass the forward and reverse refinement algorithms.\n");
         fprintf(stderr, "    -e <stoppingTol> Maximum allowable L2 distance between successive probability distributions.\n");
@@ -357,6 +467,13 @@ int main(int argc, const char* argv[]) {
     for (int i = 0; i < numBoundedSpeciesStates; i++) {
         fwdDists[i] = new Distribution(masterSys->species[distSpeciesKey[i]], numTrials, rng());
     }
+    
+    Distribution** threadDists = new Distribution*[numThreads];
+    for (int i = 0; i < numThreads; i++) {
+        threadDists[i] = new Distribution(masterSys->species[0], numTrials, rng());
+    }
+        
+    thread* threads = new thread[numThreads];
        
     double progStart = omp_get_wtime();
     if (!skipInitFwd) {        
@@ -406,24 +523,15 @@ int main(int argc, const char* argv[]) {
                 cumCount += rerunTrials[i].size();
             }
             
-            Distribution** threadDists = new Distribution*[numThreads];
-            for (int i = 0; i < numThreads; i++) {
-                threadDists[i] = new Distribution(masterSys->species[0], numTrials, rng());
-            }
-            
-            thread* threads = new thread[numThreads];
             mutex vecLock, fileLock, absCurrLock;
             
             for (int i = 0; i < numThreads; i++) {
-                threads[i] = thread(rerunTrial, fi, new System(*masterSys), revDists, threadDists[i], rerunTrials, &rng, &vecLock, &fileLock, &absCurrLock, varName, boundStatePts[i], state[i], time, absCurr, speciesDistKey, boundHandlingMethod, i, numTrials, numTimePts);
+                threads[i] = thread(rerunTrialFwd, fi, new System(*masterSys), revDists, threadDists[i], rerunTrials, &rng, &vecLock, &fileLock, &absCurrLock, varName, boundStatePts[i], state[i], time, absCurr, speciesDistKey, boundHandlingMethod, i, numTrials, numTimePts);
             }
             
             for (int i = 0; i < numThreads; i++) {
                 threads[i].join();
-            }   
-            
-            delete[] threadDists;
-            delete[] threads;
+            }
         }
         
         fi->writeInitAbsCurrData("initFwdAbsCurr", absCurr, masterSys->numSpecies, 0, numTimePts);
@@ -444,9 +552,7 @@ int main(int argc, const char* argv[]) {
             fwdTrialEnd[0][i].push_back(0);
         }
     }
-    
-    abort();
-    
+        
     if (!skipInitRev) {
         revSetupStart[0] = omp_get_wtime();
         
@@ -460,6 +566,7 @@ int main(int argc, const char* argv[]) {
                 
         revSetupEnd[0] = omp_get_wtime();
         
+        int numRerunTrials = 0;
         #pragma omp parallel for default(shared) private(sys)
         for (int i = 0; i < numTrials; i++) {    
             revTrialStart[0][i].push_back(omp_get_wtime());
@@ -477,12 +584,54 @@ int main(int argc, const char* argv[]) {
             }
             sys->initRev();
 
+            int breachSpeciesId, breachTimePt;
             varName = "initRevData";
-            simRev(sys, 0, numTimePts, time, state[threadId], fwdDists, speciesDistKey, boundHandlingMethod);
+            bool boundBreach = simRev(sys, 0, numTimePts, time, state[threadId], fwdDists, speciesDistKey, boundHandlingMethod, breachSpeciesId, breachTimePt);
             
             revWriteStart[0][i].push_back(omp_get_wtime());
             writeStateData(-1, sys, fi, varName, i, state[threadId], 0, numTimePts, fileLock);
             revTrialEnd[0][i].push_back(omp_get_wtime());
+            
+            if (boundBreach) {
+                omp_set_lock(&absCurrLock);
+                absCurr[breachSpeciesId][breachTimePt]++;
+                omp_unset_lock(&absCurrLock);
+                
+                omp_set_lock(&boundLock);
+                rerunTrials[breachTimePt].push_back(new RerunTrial(i, 0, breachTimePt, breachSpeciesId));
+                numRerunTrials++;
+                omp_unset_lock(&boundLock);
+            }
+        }
+        
+        if (numRerunTrials > 0) {
+            int cumCount = 0;
+            for (int i = numTimePts - 1; i >= 0; i--) {
+                for (int j = 0; j < rerunTrials[i].size(); j++) {
+                    rerunTrials[i][j]->numPrevTrials = cumCount;
+                }
+                
+                cumCount += rerunTrials[i].size();
+            }
+                        
+            mutex vecLock, fileLock, absCurrLock;
+            
+            for (int i = 0; i < numThreads; i++) {
+                threads[i] = thread(rerunTrialRev, fi, new System(*masterSys), fwdDists, threadDists[i], rerunTrials, &rng, &vecLock, &fileLock, &absCurrLock, varName, boundStatePts[i], state[i], time, absCurr, speciesDistKey, boundHandlingMethod, i, numTrials, numTimePts);
+            }
+            
+            for (int i = 0; i < numThreads; i++) {
+                threads[i].join();
+            }
+        }
+        
+        fi->writeInitAbsCurrData("initRevAbsCurr", absCurr, masterSys->numSpecies, 0, numTimePts);
+        
+        #pragma omp parallel for default(shared)
+        for (int i = 0; i < masterSys->numSpecies; i++) {
+            for (int j = 0; j < numTimePts; j++) {
+                absCurr[i][j] = 0;
+            }
         }
     } else {
         revSetupStart[0] = 0;
@@ -494,6 +643,8 @@ int main(int argc, const char* argv[]) {
             revTrialEnd[0][i].push_back(0);
         }
     }  
+        
+    abort();
     
     if (!skipRefine) {        
         for (int i = 0; i < numDataSavePts; i++) {
@@ -568,9 +719,10 @@ int main(int argc, const char* argv[]) {
                     sys->rxns[k]->updateProp(sys->volRatio);
                 }
                 sys->initRev();
-
+                
+                int temp1, temp2;
                 varName = "revData";
-                simRev(sys, 0, numTimePts, time, state[threadId], revDists, speciesDistKey, boundHandlingMethod);
+                simRev(sys, 0, numTimePts, time, state[threadId], revDists, speciesDistKey, boundHandlingMethod, temp1, temp2);
                 
                 revWriteStart[i + 1][j].push_back(omp_get_wtime());
                 writeStateData(i, sys, fi, varName, j, state[threadId], 0, numTimePts, fileLock);
@@ -689,12 +841,8 @@ bool simFwd(System* sys, int startTimePt, int endTimePt, double* time, double** 
     bool boundStop = false;
     
     for (int i = startTimePt; i < endTimePt; i++) {
-        //fprintf(stderr, "    %i\n", i);
         while(sys->rxnPq->getNextTime() <= time[i] && !boundStop) {
             boundBreachSpeciesId = sys->execRxn(true);
-            
-            //fprintf(stderr, "      %f %f %f %i\n", sys->rxnPq->getNextTime(), sys->time, sys->species[1]->state, boundHandlingMethod);
-            //sys->rxnPq->print();
             
             if (boundBreachSpeciesId >= 0) {
                 switch (boundHandlingMethod) {
@@ -733,22 +881,31 @@ bool simFwd(System* sys, int startTimePt, int endTimePt, double* time, double** 
     return boundStop;
 }
 
-bool simRev(System* sys, int startTimePt, int endTimePt, double* time, double** state, Distribution** dists, int* speciesDistKey, int boundHandlingMethod) {
-    int boundBreachSpeciesId;
+bool simRev(System* sys, int startTimePt, int endTimePt, double* time, double** state, Distribution** dists, int* speciesDistKey, int boundHandlingMethod, int& boundBreachSpeciesId, int& breachTimePt) {
+    bool boundStop = false;
     
     int numTimePts = endTimePt;
-    for (int i = numTimePts - 1; i >= 0; i--) {
+    for (int i = numTimePts - 1; i >= startTimePt; i--) {
         double nextTime = sys->rxnPq->getNextTime();
         
-        while(nextTime >= time[i] && nextTime != -DBL_MAX) {
+        while(nextTime >= time[i] && nextTime != -DBL_MAX && !boundStop) {
             boundBreachSpeciesId = sys->execRxn(false);
             nextTime = sys->rxnPq->getNextTime();
             
             if (boundBreachSpeciesId >= 0) {
-                i = numTimePts - 1;
-                sys->updateTime(time[i]);
-                sys->species[boundBreachSpeciesId]->state = dists[speciesDistKey[boundBreachSpeciesId]]->sample();
-                sys->initRev();
+                switch(boundHandlingMethod) {
+                    case 1:
+                        i = numTimePts - 1;
+                        sys->updateTime(time[i]);
+                        sys->species[boundBreachSpeciesId]->state = dists[speciesDistKey[boundBreachSpeciesId]]->sample();
+                        sys->updateProps();
+                        sys->initRev();
+                        break;
+                    case 2:
+                        breachTimePt = i;
+                        boundStop = true;
+                        break;
+                }
             }
         }
         
@@ -757,7 +914,19 @@ bool simRev(System* sys, int startTimePt, int endTimePt, double* time, double** 
         for (int j = 0; j < sys->numSpecies; j++) {
             state[j][i] = sys->species[j]->state;
         }
+        
+        if (boundStop) {
+            break;
+        }
     }
+    
+    if (boundStop) {
+        for (int i = startTimePt; i < breachTimePt; i++) {
+            state[boundBreachSpeciesId][i] = -1;
+        }
+    }
+    
+    return boundStop;
 }
 
 void writeStateData(int dataSavePtId, System* sys, FileInterface* fi, string varName, int trial, double** state, int startTimePt, int numTimePts, omp_lock_t& fileLock) {
