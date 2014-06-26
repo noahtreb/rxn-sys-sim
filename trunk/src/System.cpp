@@ -188,7 +188,6 @@ int System::execRxn(bool fwd) {
             this->setRxnTimes(rxn, time, fwd);
             this->updateTime(time);
         } else {
-            fprintf(stderr, "      Here\n");
             for (int i = 0; i < rxn->numStoichSpecies; i++) {
                 if (rxn->stoichSpecies[i]->stateChanges) {
                     rxn->stoichSpecies[i]->state -= dir * rxn->stoichCoeffs[i];
