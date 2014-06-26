@@ -42,7 +42,14 @@ void rerunTrialFwd(FileInterface* fi, System* sys, Distribution** revDists, Dist
         mt19937* rng, mutex* vecLock, mutex* fileLock, mutex* absCurrLock, string varName, double** boundStatePts, double** state,
         double* time, int** absCurr, int* speciesDistKey, int boundHandlingMethod, int threadId, int dataSavePtId, int numTrials, 
         int numTimePts) {
+    vector<double> findTrialStart;
+    vector<double> findTrialEnd;
+    vector<double> readDataStart;
+    vector<double> readDataEnd;
+    vector<double> simEnd;
+    
     while (true) {
+        findTrialStart.push_back(omp_get_wtime());
         vecLock->lock();
         
         int startTimePt;
@@ -67,15 +74,17 @@ void rerunTrialFwd(FileInterface* fi, System* sys, Distribution** revDists, Dist
         }
                 
         vecLock->unlock();
+        findTrialEnd.push_back(omp_get_wtime());
         
         if (!rtAssigned) {
             return;
         }
         
         while (rt->numPrevTrials > 0) {
-            this_thread::sleep_for(chrono::seconds(1));
+            this_thread::sleep_for(chrono::milliseconds(1));
         }
         
+        readDataStart.push_back(omp_get_wtime());
         fileLock->lock();
         if (dataSavePtId < 0) {
             fi->readInitDataPt(varName, numTrials, sys->numSpecies, startTimePt, boundStatePts);  
@@ -83,6 +92,7 @@ void rerunTrialFwd(FileInterface* fi, System* sys, Distribution** revDists, Dist
             fi->readDataPt(varName, dataSavePtId, numTrials, sys->numSpecies, startTimePt, boundStatePts);            
         }
         fileLock->unlock();
+        readDataEnd.push_back(omp_get_wtime());
         
         dist->setSpecies(sys->species[rt->boundBreachSpeciesId]);
         dist->update(boundStatePts, numTrials, true);
@@ -135,6 +145,7 @@ void rerunTrialFwd(FileInterface* fi, System* sys, Distribution** revDists, Dist
                 rerunTrials[origStartTimePt].erase(rerunTrials[origStartTimePt].begin() + rtId);
                 vecLock->unlock();
                 
+                simEnd.push_back(omp_get_wtime());
                 break;
             }               
             
@@ -153,23 +164,52 @@ void rerunTrialFwd(FileInterface* fi, System* sys, Distribution** revDists, Dist
 
                 rt->threadAssigned = false;
                 rt->threadId = -1;
-                rt->numPrevTrials = 0;
+                rt->startTimePt = endTimePt;
                 rt->id = rerunTrials[endTimePt].size() - 1;
                 
                 for (int i = 0; i < endTimePt; i++) {
-                    for (int j = 0; j < rerunTrials[i].size(); j++) {
-                        rt->numPrevTrials++;
+                    if (rerunTrials[i].size() > 0) {
+                        rt->numPrevTrials = rerunTrials[i][0]->numPrevTrials;
+                        
+                        for (int j = 0; j < rerunTrials[i].size(); j++) {
+                            if (rerunTrials[i][j]->threadAssigned) {
+                                if (rerunTrials[i][j]->startTimePt < endTimePt) {
+                                    rt->numPrevTrials++;
+                                }
+                            } else {
+                                rt->numPrevTrials++;
+                            }
+                        }
+                        
+                        break;
                     }
                 }
                 vecLock->unlock();
                 
+                simEnd.push_back(omp_get_wtime());
                 break;
             }
                         
             startTimePt = endTimePt;
+            rt->startTimePt = startTimePt;
             vecLock->unlock();
         }
     }
+    
+    /*
+    int findTrialTime = 0;
+    int waitTime = 0;
+    int readDataTime = 0;
+    int simTime = 0;
+    for (int i = 0; i < findTrialStart.size(); i++) {
+        findTrialTime += findTrialEnd[i] - findTrialStart[i];
+        waitTime += readDataStart[i] - findTrialEnd[i];
+        readDataTime += readDataEnd[i] - readDataStart[i];
+        simTime += simEnd[i] - readDataEnd[i];
+    }
+    
+    fprintf(stderr, "%i: %i %i %i %i", threadId, findTrialTime, waitTime, readDataTime, simTime);
+    */
     
     delete sys;
 }
@@ -209,7 +249,7 @@ void rerunTrialRev(FileInterface* fi, System* sys, Distribution** fwdDists, Dist
         }
         
         while (rt->numPrevTrials > 0) {
-            this_thread::sleep_for(chrono::seconds(1));
+            this_thread::sleep_for(chrono::milliseconds(1));
         }
         
         fileLock->lock();
@@ -246,7 +286,7 @@ void rerunTrialRev(FileInterface* fi, System* sys, Distribution** fwdDists, Dist
             
             writeStateData(dataSavePtId, sys, fi, varName, rt->trialId, state, startTimePt, endTimePt - startTimePt, fileLock);
                         
-            vecLock->lock();               
+            vecLock->lock();
             
             for (int i = startTimePt; i < endTimePt; i++) {                
                 for (int j = 0; j < rerunTrials[i].size(); j++) {
@@ -263,7 +303,6 @@ void rerunTrialRev(FileInterface* fi, System* sys, Distribution** fwdDists, Dist
                 delete rt;
                 rerunTrials[origEndTimePt].erase(rerunTrials[origEndTimePt].begin() + rtId);
                 vecLock->unlock();
-                
                 break;
             }               
             
@@ -282,20 +321,34 @@ void rerunTrialRev(FileInterface* fi, System* sys, Distribution** fwdDists, Dist
 
                 rt->threadAssigned = false;
                 rt->threadId = -1;
-                rt->numPrevTrials = 0;
+                rt->endTimePt = startTimePt;
                 rt->id = rerunTrials[startTimePt].size() - 1;
                 
                 for (int i = startTimePt + 1; i < numTimePts; i++) {
-                    for (int j = 0; j < rerunTrials[i].size(); j++) {
-                        rt->numPrevTrials++;
+                    if (rerunTrials[i].size() > 0) {
+                        rt->numPrevTrials = rerunTrials[i][0]->numPrevTrials;
+                        
+                        for (int j = 0; j < rerunTrials[i].size(); j++) {
+                            if (rerunTrials[i][j]->threadAssigned) {
+                                if (rerunTrials[i][j]->endTimePt > startTimePt) {
+                                    rt->numPrevTrials++;
+                                }
+                            } else {
+                                rt->numPrevTrials++;
+                            }
+                        }
+                        
+                        break;
                     }
                 }
+                
                 vecLock->unlock();
                 
                 break;
             }
                         
             endTimePt = startTimePt;
+            rt->endTimePt = endTimePt;
             vecLock->unlock();
         }
     }
@@ -553,7 +606,7 @@ int main(int argc, const char* argv[]) {
             }
             fwdTrialEnd[0][i].push_back(omp_get_wtime());
         }
-              
+        
         fwdRerunStart[0] = omp_get_wtime();
         if (numRerunTrials > 0) {
             int cumCount = 0;
@@ -591,9 +644,16 @@ int main(int argc, const char* argv[]) {
         fwdSetupStart[0] = 0;
         fwdSetupEnd[0] = 0;
         
+        fwdRerunStart[0] = 0;
+        fwdAbsCurrWriteStart[0] = 0;
+        fwdAbsCurrResetStart[0] = 0;
+        fwdAbsCurrResetEnd[0] = 0;
+        
+        #pragma omp parallel for default(shared)
         for (int i = 0; i < numTrials; i++) {
             fwdTrialStart[0][i].push_back(0);
             fwdWriteStart[0][i].push_back(0);
+            fwdWriteEnd[0][i].push_back(0);
             fwdTrialEnd[0][i].push_back(0);
         }
     }
@@ -684,13 +744,20 @@ int main(int argc, const char* argv[]) {
             }
         }
         revAbsCurrResetEnd[0] = omp_get_wtime();
-    } else {
+    } else {        
         revSetupStart[0] = 0;
         revSetupEnd[0] = 0;
         
+        revRerunStart[0] = 0;
+        revAbsCurrWriteStart[0] = 0;
+        revAbsCurrResetStart[0] = 0;
+        revAbsCurrResetEnd[0] = 0;
+        
+        #pragma omp parallel for default(shared)
         for (int i = 0; i < numTrials; i++) {
             revTrialStart[0][i].push_back(0);
             revWriteStart[0][i].push_back(0);
+            revWriteEnd[0][i].push_back(0);
             revTrialEnd[0][i].push_back(0);
         }
     }
@@ -881,76 +948,86 @@ int main(int argc, const char* argv[]) {
     numDataSavePts++;
     
     double avFwdSetupTime = 0;
-    double avFwdTrialTime = 0;
     double avFwdRunTime = 0;
-    double avFwdWriteTime = 0;
     double avFwdRerunTime = 0;
+    double avFwdTrialTime = 0;
+    double avFwdTrialRunTime = 0;
+    double avFwdTrialWriteTime = 0;
     
     double avRevSetupTime = 0;
-    double avRevTrialTime = 0;
     double avRevRunTime = 0;
-    double avRevWriteTime = 0;
     double avRevRerunTime = 0;
+    double avRevTrialTime = 0;
+    double avRevTrialRunTime = 0;
+    double avRevTrialWriteTime = 0;
     
     for (int i = 0; i < numDataSavePts; i++) {
         avFwdSetupTime += fwdSetupEnd[i] - fwdSetupStart[i];
         avRevSetupTime += revSetupEnd[i] - revSetupStart[i];
+        avFwdRunTime += fwdRerunStart[i] - fwdSetupEnd[i];
+        avRevRunTime += revRerunStart[i] - revSetupEnd[i];
         avFwdRerunTime += fwdAbsCurrWriteStart[i] - fwdRerunStart[i];
         avRevRerunTime += revAbsCurrWriteStart[i] - revRerunStart[i];
             
         for (int j = 0; j < numTrials; j++) {
             for (int k = 0; k < fwdTrialEnd[i][j].size(); k++) {
                 avFwdTrialTime += fwdTrialEnd[i][j][k] - fwdTrialStart[i][j][k];
-                avFwdRunTime += fwdWriteStart[i][j][k] - fwdTrialStart[i][j][k];
-                avFwdWriteTime += fwdWriteEnd[i][j][k] - fwdWriteStart[i][j][k];
+                avFwdTrialRunTime += fwdWriteStart[i][j][k] - fwdTrialStart[i][j][k];
+                avFwdTrialWriteTime += fwdWriteEnd[i][j][k] - fwdWriteStart[i][j][k];
             }
-            
+                        
             for (int k = 0; k < revTrialEnd[i][j].size(); k++) {
                 avRevTrialTime += revTrialEnd[i][j][k] - revTrialStart[i][j][k];
-                avRevRunTime += revWriteStart[i][j][k] - revTrialStart[i][j][k];
-                avRevWriteTime += revWriteEnd[i][j][k] - revWriteStart[i][j][k];
+                avRevTrialRunTime += revWriteStart[i][j][k] - revTrialStart[i][j][k];
+                avRevTrialWriteTime += revWriteEnd[i][j][k] - revWriteStart[i][j][k];
             }
         }
     }
     
     avFwdSetupTime /= numDataSavePts;
+    avFwdRunTime /= numDataSavePts;
     avFwdRerunTime /= numDataSavePts;
     avFwdTrialTime /= (numDataSavePts * numTrials);
-    avFwdRunTime /= (numDataSavePts * numTrials);
-    avFwdWriteTime /= (numDataSavePts * numTrials);
+    avFwdTrialRunTime /= (numDataSavePts * numTrials);
+    avFwdTrialWriteTime /= (numDataSavePts * numTrials);
     
     avRevSetupTime /= numDataSavePts;
+    avRevRunTime /= numDataSavePts;
     avRevRerunTime /= numDataSavePts;
     avRevTrialTime /= (numDataSavePts * numTrials);
-    avRevRunTime /= (numDataSavePts * numTrials);
-    avRevWriteTime /= (numDataSavePts * numTrials);
+    avRevTrialRunTime /= (numDataSavePts * numTrials);
+    avRevTrialWriteTime /= (numDataSavePts * numTrials);
         
     double avSetupTime = (avFwdSetupTime + avRevSetupTime) / 2;
+    double avRunTime = (avFwdRunTime + avRevRunTime) / 2;
     double avRerunTime = (avFwdRerunTime + avRevRerunTime) / 2;
     double avTrialTime = (avFwdTrialTime + avRevTrialTime) / 2;
-    double avRunTime = (avFwdRunTime + avRevRunTime) / 2;
-    double avWriteTime = (avFwdWriteTime + avRevWriteTime) / 2;
+    double avTrialRunTime = (avFwdTrialRunTime + avRevTrialRunTime) / 2;
+    double avTrialWriteTime = (avFwdTrialWriteTime + avRevTrialWriteTime) / 2;
     
     fprintf(stdout, "\nForward simulations:\n");
-    fprintf(stdout, "    Average setup time:                %e s\n", avFwdSetupTime);
-    fprintf(stdout, "    Average trial simulation run time: %e s\n", avFwdRunTime);
-    fprintf(stdout, "    Average trial file write time:     %e s\n", avFwdWriteTime);
+    fprintf(stdout, "  Average setup time:                  %e s\n", avFwdSetupTime);
+    fprintf(stdout, "  Average time to run trials:          %e s\n", avFwdRunTime);
+    fprintf(stdout, "    Average trial simulation run time: %e s\n", avFwdTrialRunTime);
+    fprintf(stdout, "    Average trial file write time:     %e s\n", avFwdTrialWriteTime);
     fprintf(stdout, "    Average trial execution time:      %e s\n", avFwdTrialTime);
-    fprintf(stdout, "    Average time to rerun trials:      %e s\n\n", avFwdRerunTime);
+    fprintf(stdout, "  Average time to rerun trials:        %e s\n\n", avFwdRerunTime);
     
     fprintf(stdout, "Reverse simulations:\n");
-    fprintf(stdout, "    Average setup time:                %e s\n", avRevSetupTime);
-    fprintf(stdout, "    Average trial simulation run time: %e s\n", avRevRunTime);
-    fprintf(stdout, "    Average trial file write time:     %e s\n", avRevWriteTime);
+    fprintf(stdout, "  Average setup time:                  %e s\n", avRevSetupTime);
+    fprintf(stdout, "  Average time to run trials:          %e s\n", avRevRunTime);
+    fprintf(stdout, "    Average trial simulation run time: %e s\n", avRevTrialRunTime);
+    fprintf(stdout, "    Average trial file write time:     %e s\n", avRevTrialWriteTime);
     fprintf(stdout, "    Average trial execution time:      %e s\n", avRevTrialTime);
-    fprintf(stdout, "    Average time to rerun trials:      %e s\n\n", avRevRerunTime);
+    fprintf(stdout, "  Average time to rerun trials:        %e s\n\n", avRevRerunTime);
     
     fprintf(stdout, "Forward and reverse simulations:\n");
-    fprintf(stdout, "    Average setup time:                %e s\n", avSetupTime);
-    fprintf(stdout, "    Average trial simulation run time: %e s\n", avRunTime);
-    fprintf(stdout, "    Average trial file write time:     %e s\n", avWriteTime);
+    fprintf(stdout, "  Average setup time:                  %e s\n", avSetupTime);
+    fprintf(stdout, "  Average time to run trials:          %e s\n", avRunTime);
+    fprintf(stdout, "    Average trial simulation run time: %e s\n", avTrialRunTime);
+    fprintf(stdout, "    Average trial file write time:     %e s\n", avTrialWriteTime);
     fprintf(stdout, "    Average trial execution time:      %e s\n", avTrialTime);
-    fprintf(stdout, "    Average time to rerun trials:      %e s\n\n", avRerunTime);
+    fprintf(stdout, "  Average time to rerun trials:        %e s\n\n", avRerunTime);
     
     fprintf(stdout, "Total program execution time:          %e s\n\n", progEnd - progStart);
         

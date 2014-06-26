@@ -24,11 +24,11 @@ yMax = max([max(max(d1(speciesId, :, :)))...
 figure;
 subplot(1, 2, 1);
 plot(t, squeeze(d1(speciesId, :, :)));
-ylim([0 yMax]);
+%ylim([0 yMax]);
 
 subplot(1, 2, 2);
 plot(t, squeeze(d2(speciesId, :, :)));
-ylim([0 yMax]);
+%ylim([0 yMax]);
 
 %% Produce refined data plots.
 
@@ -47,11 +47,11 @@ end
 figure;
 subplot(2, 2, 1);
 plot(t, squeeze(d1(speciesId, :, :)));
-ylim([0 yMax]);
+%ylim([0 yMax]);
 
 subplot(2, 2, 2);
 plot(t, squeeze(d2(speciesId, :, :)));
-ylim([0 yMax]);
+%ylim([0 yMax]);
 
 subplot(2, 2, 3);
 plot(t, a1(speciesId, :), 'or');
