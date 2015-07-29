@@ -1,0 +1,1 @@
+Simulates networks of biochemical or chemical reactions forward or backward in time using a version of the Stochastic Simulation Algorithm popularized by Gillespie.
