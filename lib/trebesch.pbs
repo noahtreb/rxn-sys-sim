@@ -1,0 +1,31 @@
+#!/bin/bash -l
+#PBS -l nodes=1:ppn=8,mem=16gb,walltime=12:00:00
+#PBS -m abe
+
+export OMP_NUM_THREADS=8
+export LD_LIBRARY_PATH="/home/kaznessi/trebeshn/Software/netcdf-4.3.0/lib/:/home/kaznessi/trebeshn/Software/gcc-4.8.1/lib64/:$LD_LIBRARY_PATH"
+
+cd /home/kaznessi/trebeshn/Documents/rxn-sys-sim/src/
+
+echo ./RxnSysSim s0.nc  -r 13 >  log.txt
+     ./RxnSysSim s0.nc  -r 13 >> log.txt
+echo ./RxnSysSim s1.nc  -r 13 >> log.txt
+     ./RxnSysSim s1.nc  -r 13 >> log.txt
+echo ./RxnSysSim s2.nc  -r 13 >> log.txt
+     ./RxnSysSim s2.nc  -r 13 >> log.txt
+echo ./RxnSysSim s3.nc  -r 13 >> log.txt
+     ./RxnSysSim s3.nc  -r 13 >> log.txt
+echo ./RxnSysSim s4.nc  -r 13 >> log.txt
+     ./RxnSysSim s4.nc  -r 13 >> log.txt
+echo ./RxnSysSim s5.nc  -r 13 >> log.txt
+     ./RxnSysSim s5.nc  -r 13 >> log.txt
+echo ./RxnSysSim s6.nc  -r 13 >> log.txt
+     ./RxnSysSim s6.nc  -r 13 >> log.txt
+echo ./RxnSysSim s7.nc  -r 13 >> log.txt
+     ./RxnSysSim s7.nc  -r 13 >> log.txt
+echo ./RxnSysSim s8.nc  -r 13 >> log.txt
+     ./RxnSysSim s8.nc  -r 13 >> log.txt
+echo ./RxnSysSim s9.nc  -r 13 >> log.txt
+     ./RxnSysSim s9.nc  -r 13 >> log.txt
+echo ./RxnSysSim s10.nc -r 13 >> log.txt
+     ./RxnSysSim s10.nc -r 13 >> log.txt
